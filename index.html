@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0e1a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Star Finder">
+  <meta name="description" content="Star Finder (星空识星) - Real-time celestial star identification PWA with AR camera overlay, gyroscope tracking, and bilingual Western and Chinese astronomical lore.">
+
+  <title>Star Finder (星空识星)</title>
+
+  <!-- PWA Manifest & Icons with strictly relative paths -->
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+
+  <!-- Core Stylesheet with cache busting -->
+  <link rel="stylesheet" href="./css/style.css?v=3.0">
+
+  <script>
+    // Automatic purge of legacy v1/v2 caches
+    if ('caches' in window) {
+      caches.keys().then(function(keys) {
+        keys.forEach(function(key) {
+          if (key.indexOf('v3.0') === -1) {
+            caches.delete(key);
+          }
+        });
+      });
+    }
+  </script>
+</head>
+<body>
+
+  <!-- Fullscreen App Viewport -->
+  <div id="app-viewport">
+    <!-- Optional AR Rear Camera Video Feed -->
+    <video id="ar-video" autoplay playsinline muted></video>
+
+    <!-- Photorealistic Astrophotography Milky Way WebGL Canvas -->
+    <canvas id="milkyway-canvas"></canvas>
+
+    <!-- Interactive 60fps HTML5 Sky Canvas -->
+    <canvas id="sky-canvas"></canvas>
+
+    <!-- Center Reticle Targeting Lock Badge -->
+    <div class="center-reticle-hud">
+      <div id="lock-badge" class="lock-badge" role="button" tabindex="-1" title="Click for details">
+        <div class="badge-header">
+          <svg class="badge-target-icon" viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v4h-2zm0 6h2v2h-2z"/>
+          </svg>
+          <span id="badge-star-name">Sirius</span>
+        </div>
+        <div id="badge-star-meta" class="badge-meta">α CMa • Mag -1.46 • 8.6 ly</div>
+        <div id="badge-hint" class="badge-hint">Tap to inspect ➔</div>
+      </div>
+    </div>
+
+    <!-- Directional Aiming Guide HUD (Active when navigating to a star) -->
+    <div id="aiming-guide-hud" class="aiming-guide-hud">
+      <div id="aiming-arrow-container" class="aiming-arrow-container">
+        <svg class="aiming-arrow-icon" viewBox="0 0 24 24">
+          <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
+        </svg>
+      </div>
+      <div class="aiming-text-block">
+        <span id="aiming-target-name" class="aiming-target-name">Target: Polaris</span>
+        <span id="aiming-instruction" class="aiming-instruction">Turn Left 42°, Tilt Up 15°</span>
+      </div>
+      <button id="aiming-close-btn" class="aiming-close-btn" title="Cancel Aiming">✕</button>
+    </div>
+
+    <!-- Top App Bar -->
+    <header class="app-header">
+      <a href="#" class="brand" tabindex="-1" title="Star Finder (星空识星)">
+        <img src="./icon.svg" alt="Star Finder Logo" class="brand-icon">
+        <div class="brand-text">
+          <span class="brand-title">Star Finder <span class="version-tag">v3.0</span></span>
+          <span class="brand-subtitle" data-i18n="brand_sub">Celestial Guide</span>
+        </div>
+      </a>
+
+      <!-- Search & Autocomplete Input -->
+      <div class="search-container" role="search" aria-label="Celestial Search">
+        <div class="search-input-wrapper">
+          <svg class="search-icon" viewBox="0 0 24 24">
+            <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+          </svg>
+          <input type="text" id="search-input" class="search-input" placeholder="Search star, constellation, lore..." autocomplete="off" tabindex="1" aria-autocomplete="list" aria-controls="autocomplete-dropdown">
+          <button id="search-clear-btn" class="search-clear-btn" title="Clear search">✕</button>
+        </div>
+        <div id="autocomplete-dropdown" class="autocomplete-dropdown" role="listbox"></div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="header-actions">
+        <!-- Upcoming Celestial Events Panel Toggle (Icon-only) -->
+        <button id="events-toggle-btn" class="header-btn btn-icon-only" title="Upcoming Celestial Events & Rare Wonders">
+          <span style="font-size: 15px;">☄️</span>
+        </button>
+
+        <!-- Sky View Layers & Decluttering Toggle (Icon-only) -->
+        <button id="layers-toggle-btn" class="header-btn btn-icon-only" title="Sky Layers & View Filter">
+          <span style="font-size: 15px;">🗂️</span>
+        </button>
+
+        <!-- Gyroscope / Compass Tracking Toggle -->
+        <button id="gyro-toggle-btn" class="header-btn btn-icon-only" title="Gyroscope & Compass Tracking">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M7 11v2h10v-2H7zm5-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/>
+          </svg>
+        </button>
+
+        <!-- Red-tint Night Mode for Nocturnal Dark-Sky Viewing -->
+        <button id="night-toggle-btn" class="header-btn btn-icon-only" title="Night Vision Red Mode">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+          </svg>
+        </button>
+
+        <!-- Language Toggle [EN | 中文] -->
+        <button id="lang-toggle-btn" class="header-btn" title="Toggle English / Chinese">中文</button>
+
+        <!-- In-app Install Button -->
+        <button id="install-app-btn" class="header-btn" style="display: none;" title="Install Progressive Web App">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+            <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/>
+          </svg>
+          <span>Install</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Floating Dedicated AR Camera Action Button (Visible right above thumb on right) -->
+    <button id="ar-floating-fab" class="ar-floating-fab" title="Toggle AR Camera Overlay">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+        <circle cx="12" cy="12" r="3.2"/>
+        <path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>
+      </svg>
+      <span id="ar-floating-label">AR Camera</span>
+    </button>
+
+    <!-- Bottom Controls & Telemetry Bar -->
+    <div class="bottom-controls-bar">
+      <div class="bottom-left-group">
+        <!-- Location Selector Pill -->
+        <button id="location-btn" class="header-btn" title="Change Location">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+          </svg>
+          <span id="location-label">San Mateo (37.6°N)</span>
+        </button>
+
+        <!-- Planet Vantage Toggle Pill -->
+        <button id="planet-toggle-btn" class="header-btn" title="Switch Observation Planet">
+          <span id="planet-toggle-icon">🌍</span>
+          <span id="planet-toggle-label">Earth</span>
+        </button>
+
+        <!-- Sky Visibility & Light Pollution Toggle Button -->
+        <button id="skymode-btn" class="header-btn" title="Toggle Sky Visibility / Light Pollution">
+          <span id="skymode-icon">🏙️</span>
+          <span id="skymode-label">City (≤3.2m)</span>
+        </button>
+      </div>
+
+      <!-- Center Telemetry Pill -->
+      <div class="telemetry-pill">
+        <span>Az: <span id="telemetry-az" class="telemetry-val">180°</span></span>
+        <span>Alt: <span id="telemetry-alt" class="telemetry-val">30°</span></span>
+        <span>FOV: <span id="telemetry-fov" class="telemetry-val">60°</span></span>
+      </div>
+    </div>
+
+    <!-- Desktop Glassmorphic Hover Tooltip -->
+    <div id="star-tooltip" class="glassmorphic-tooltip">
+      <div class="tooltip-title-row">
+        <span id="tooltip-name" class="tooltip-name">Sirius</span>
+        <span id="tooltip-bayer" class="tooltip-bayer">α CMa</span>
+      </div>
+      <div id="tooltip-constel" class="tooltip-sub">Canis Major • Mag -1.46</div>
+      <div id="tooltip-fact" class="tooltip-fact">Brightest star in Earth’s night sky.</div>
+    </div>
+
+    <!-- Bottom Star Fact Sheet Backdrop & Card -->
+    <div id="sheet-backdrop" class="sheet-backdrop"></div>
+    <section id="fact-sheet" class="fact-sheet" aria-labelledby="sheet-main-name">
+      <div class="sheet-handle-bar"></div>
+      <div class="sheet-header">
+        <div class="sheet-title-group">
+          <div id="sheet-main-name" class="sheet-main-name">
+            Sirius <span class="sheet-bayer-badge">α CMa</span>
+          </div>
+          <div id="sheet-sub-name" class="sheet-sub-name">Canis Major • A1V</div>
+        </div>
+        <div class="sheet-header-actions">
+          <button id="sheet-aim-btn" class="sheet-aim-btn" title="Aim Camera to this Star">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
+            </svg>
+            <span data-i18n="aim_btn">Aim Here</span>
+          </button>
+          <button id="sheet-close-btn" class="sheet-close-btn" title="Close Sheet">✕</button>
+        </div>
+      </div>
+
+      <div class="sheet-content">
+        <!-- Physical Stats 4-Grid -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-label" data-i18n="stat_mag">Visual Mag</span>
+            <span id="stat-mag" class="stat-value">-1.46</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label" data-i18n="stat_dist">Distance</span>
+            <span id="stat-dist" class="stat-value">8.6 ly</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label" data-i18n="stat_spec">Spectral Type</span>
+            <span id="stat-spectral" class="stat-value">A1V</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label" data-i18n="stat_alt">Altitude</span>
+            <span id="stat-alt" class="stat-value">28.4°</span>
+          </div>
+        </div>
+
+        <!-- Astrophysical Insights -->
+        <div class="sheet-section">
+          <div class="section-title">
+            <span>🔬</span>
+            <span data-i18n="sec_astro">Astrophysical Facts</span>
+          </div>
+          <ul id="sheet-facts-list" class="facts-list"></ul>
+        </div>
+
+        <!-- Cultural Lore & Mythology -->
+        <div class="sheet-section">
+          <div class="section-title">
+            <span>📖</span>
+            <span data-i18n="sec_lore">Cultural Lore & Mythology</span>
+          </div>
+          <div class="lore-card">
+            <span class="lore-heading" data-i18n="western_lore_title">🏛️ Western Mythology</span>
+            <p id="sheet-western-lore" class="lore-body"></p>
+          </div>
+          <div class="lore-card">
+            <span class="lore-heading" data-i18n="chinese_lore_title">🐉 Chinese Astronomy</span>
+            <p id="sheet-chinese-lore" class="lore-body"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Location Selection Modal -->
+    <div id="location-modal" class="modal-overlay">
+      <div class="modal-card">
+        <div class="modal-header">
+          <span class="modal-title" data-i18n="loc_modal_title">Stargazing Location</span>
+          <button id="close-location-modal-btn" class="sheet-close-btn">✕</button>
+        </div>
+
+        <!-- Observation Planet Vantage Point Selector -->
+        <div class="planet-vantage-group" style="margin-bottom: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span class="stat-label" style="margin: 0; font-weight: 600;" data-i18n="planet_vantage_title">Observation Planet</span>
+            <span id="planet-vantage-badge" style="font-size: 11px; padding: 2px 7px; border-radius: 4px; background: rgba(56, 189, 248, 0.15); color: var(--accent-cyan);">Earth 🌍</span>
+          </div>
+          <div id="planet-vantage-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); gap: 8px;">
+            <button id="planet-earth-btn" data-planet="earth" class="header-btn active" style="justify-content: center; height: 36px; font-size: 13px;">🌍 Earth (地球)</button>
+            <button id="planet-mars-btn" data-planet="mars" class="header-btn" style="justify-content: center; height: 36px; font-size: 13px;">🔴 Mars (火星)</button>
+          </div>
+          <div id="planet-vantage-hint" style="font-size: 11px; color: var(--text-muted); margin-top: 6px; line-height: 1.4;">
+            Viewing from Earth: Moon, Sun & 5 planets visible.
+          </div>
+        </div>
+
+        <button id="gps-locate-btn" class="gps-locate-btn">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
+          </svg>
+          <span data-i18n="gps_btn">Auto GPS Locate</span>
+        </button>
+        <span class="stat-label" data-i18n="city_presets">City Presets</span>
+        <div id="city-presets-grid" class="city-presets-grid"></div>
+
+        <div style="border-top: 1px solid var(--border-subtle); margin-top: 8px; padding-top: 8px;">
+          <span class="stat-label" data-i18n="skymode_title">Light Pollution & Sky Visibility</span>
+          <div id="skymode-presets-grid" class="skymode-presets-grid">
+            <div class="skymode-card" data-mode="city">
+              <div class="skymode-card-header">
+                <div class="skymode-card-title-group">
+                  <span>🏙️</span>
+                  <span data-i18n="skymode_city_name">City</span>
+                </div>
+                <span class="skymode-card-mag">≤ 3.2m</span>
+              </div>
+              <div class="skymode-card-desc" data-i18n="skymode_city_desc">Heavy light pollution. Only planets, Moon, Sun & bright stars.</div>
+            </div>
+            <div class="skymode-card" data-mode="suburb">
+              <div class="skymode-card-header">
+                <div class="skymode-card-title-group">
+                  <span>🏡</span>
+                  <span data-i18n="skymode_suburb_name">Suburb</span>
+                </div>
+                <span class="skymode-card-mag">≤ 4.8m</span>
+              </div>
+              <div class="skymode-card-desc" data-i18n="skymode_suburb_desc">Moderate skyglow. Major constellations clearly visible.</div>
+            </div>
+            <div class="skymode-card" data-mode="desert">
+              <div class="skymode-card-header">
+                <div class="skymode-card-title-group">
+                  <span>🌌</span>
+                  <span data-i18n="skymode_desert_name">Desert</span>
+                </div>
+                <span class="skymode-card-mag">≤ 6.5m</span>
+              </div>
+              <div class="skymode-card-desc" data-i18n="skymode_desert_desc">Pristine dark sky. Thousands of faint stars & luminous Milky Way.</div>
+            </div>
+            <div class="skymode-card" data-mode="ignore_ambient">
+              <div class="skymode-card-header">
+                <div class="skymode-card-title-group">
+                  <span>✨</span>
+                  <span data-i18n="skymode_ignore_name">Ignore Ambient Light</span>
+                </div>
+                <span class="skymode-card-mag">Pristine</span>
+              </div>
+              <div class="skymode-card-desc" data-i18n="skymode_ignore_desc">Bypass all room, city & environment light. Full pristine dark sky with thousands of stars & radiant Milky Way.</div>
+            </div>
+          </div>
+
+          <!-- Dedicated Ignore Ambient Light Switch Row -->
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; margin-top: 8px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 10px;">
+            <div style="display: flex; flex-direction: column; text-align: left;">
+              <span style="font-weight: 700; color: #fff; font-size: 13px;" data-i18n="opt_ignore_ambient">Ignore Ambient Light</span>
+              <span style="font-size: 10px; color: var(--text-muted);" data-i18n="opt_ignore_ambient_sub">Display ideal dark sky bypassing ambient/city light</span>
+            </div>
+            <label class="ui-switch">
+              <input type="checkbox" id="ignore-ambient-toggle">
+              <span class="ui-slider"></span>
+            </label>
+          </div>
+
+          <!-- Camera Ambient Light Meter Button & Live Readout -->
+          <button id="cam-meter-btn" class="city-preset-btn" style="width: 100%; display: flex; align-items: center; justify-content: space-between; margin-top: 6px; padding: 10px 12px; background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.4);">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 16px;">📷</span>
+              <div style="display: flex; flex-direction: column; text-align: left;">
+                <span style="font-weight: 700; color: var(--accent-cyan);" data-i18n="cam_meter_btn">Estimate Light via Camera</span>
+                <span id="cam-meter-status" style="font-size: 10px; color: var(--text-muted);" data-i18n="cam_meter_hint">Analyze live environment luminance via camera</span>
+              </div>
+            </div>
+            <span id="cam-meter-badge" class="skymode-card-mag" style="font-size: 10px; padding: 2px 6px;">Meter</span>
+          </button>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--border-subtle); margin-top: 6px;">
+          <span class="stat-label" data-i18n="gyro_damping_label">Sensor Smoothing</span>
+          <button id="gyro-damping-btn" class="header-btn" style="height: 30px; font-size: 11px; padding: 0 10px;">
+            <span id="gyro-damping-text">Silky Smooth (防抖稳定)</span>
+          </button>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--border-subtle); margin-top: 6px;">
+          <span class="stat-label">Compass Calibration (微调)</span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <button id="compass-minus-btn" class="header-btn" style="height: 28px; width: 34px; padding: 0; font-weight: 700;">-2°</button>
+            <span id="compass-offset-display" style="font-size: 11px; font-weight: 700; color: var(--accent-cyan); min-width: 44px; text-align: center;">0.0°</span>
+            <button id="compass-plus-btn" class="header-btn" style="height: 28px; width: 34px; padding: 0; font-weight: 700;">+2°</button>
+            <button id="compass-reset-btn" class="header-btn" style="height: 28px; padding: 0 8px; font-size: 10px;">Reset</button>
+          </div>
+        </div>
+
+        <div style="text-align: center; font-size: 11px; color: var(--text-muted); border-top: 1px solid var(--border-subtle); padding-top: 10px; margin-top: 4px;">
+          Star Finder <span style="color: var(--accent-cyan); font-weight: 600;">v3.0</span> (Spacecraft Fleet, Celestial Events & View Layers)
+        </div>
+      </div>
+    </div>
+
+    <!-- Sky View Layer Selection & Decluttering Modal -->
+    <div id="layers-modal" class="modal-overlay">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 18px;">🗂️</span>
+            <div>
+              <span class="modal-title" data-i18n="layers_modal_title">Sky View Layers & Filters</span>
+              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="layers_modal_sub">Select visible objects to avoid crowding the sky</div>
+            </div>
+          </div>
+          <button id="close-layers-btn" class="sheet-close-btn">✕</button>
+        </div>
+
+        <!-- Quick View Presets -->
+        <div style="margin-top: 10px; margin-bottom: 8px;">
+          <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;" data-i18n="presets_title">Quick Presets</span>
+          <div class="layer-preset-buttons" style="margin-top: 6px;">
+            <button class="layer-preset-pill active" data-preset="all" data-i18n="preset_all">🌟 All Layers</button>
+            <button class="layer-preset-pill" data-preset="stargazing" data-i18n="preset_stargazing">🔭 Stargazing Only</button>
+            <button class="layer-preset-pill" data-preset="spacecraft" data-i18n="preset_spacecraft">🛰️ Spacecraft & Probes</button>
+            <button class="layer-preset-pill" data-preset="minimal" data-i18n="preset_minimal">🌌 Minimalist Night</button>
+          </div>
+        </div>
+
+        <!-- Layer Switches List -->
+        <div id="layer-switches-list" style="display: flex; flex-direction: column; gap: 4px;">
+          <!-- Major Stars -->
+          <div class="layer-switch-row">
+            <div class="layer-info">
+              <span class="layer-icon">✨</span>
+              <div class="layer-text-group">
+                <span class="layer-title-text" data-i18n="layer_stars">Major Navigational Stars</span>
+                <span class="layer-sub-desc" data-i18n="layer_stars_desc">50+ brightest navigational stars</span>
+              </div>
+            </div>
+            <label class="ui-switch">
+              <input type="checkbox" id="layer-toggle-stars" checked data-layer="stars">
+              <span class="ui-slider"></span>
+            </label>
+          </div>
+
+          <!-- Constellation Lines -->
+          <div class="layer-switch-row">
+            <div class="layer-info">
+              <span class="layer-icon">📐</span>
+              <div class="layer-text-group">
+                <span class="layer-title-text" data-i18n="layer_constellations">Constellation Lines</span>
+                <span class="layer-sub-desc" data-i18n="layer_constellations_desc">Geometric stick figures & celestial lore</span>
+              </div>
+            </div>
+            <label class="ui-switch">
+              <input type="checkbox" id="layer-toggle-constellations" checked data-layer="constellations">
+              <span class="ui-slider"></span>
+            </label>
+          </div>
+
+          <!-- Solar System -->
+          <div class="layer-switch-row">
+            <div class="layer-info">
+              <span class="layer-icon">🪐</span>
+              <div class="layer-text-group">
+                <span class="layer-title-text" data-i18n="layer_solar">Solar System Planets & Moon</span>
+                <span class="layer-sub-desc" data-i18n="layer_solar_desc">Sun, Moon phases, Mercury, Venus, Mars, Jupiter, Saturn</span>
+              </div>
+            </div>
+            <label class="ui-switch">
+              <input type="checkbox" id="layer-toggle-solar" checked data-layer="solar_system">
+              <span class="ui-slider"></span>
+            </label>
+          </div>
+
+          <!-- Spacecraft & Satellites (Master) -->
+          <div class="layer-switch-row">
+            <div class="layer-info">
+              <span class="layer-icon">🛰️</span>
+              <div class="layer-text-group">
+                <span class="layer-title-text" data-i18n="layer_spacecraft">Man-Made Spacecraft & Probes</span>
+                <span class="layer-sub-desc" data-i18n="layer_spacecraft_desc">ISS, Hubble, Tiangong, JWST, Voyager 1 & 2</span>
+              </div>
+            </div>
+            <label class="ui-switch">
+              <input type="checkbox" id="layer-toggle-spacecraft" checked data-layer="spacecraft">
+              <span class="ui-slider"></span>
+            </label>
+          </div>
+
+          <!-- Sub-row: LEO Satellites -->
+          <div class="layer-switch-row sub-row">
+            <div class="layer-info">
+              <span class="layer-icon">🛸</span>
+              <div class="layer-text-group">
+                <span class="layer-title-text" data-i18n="layer_spacecraft_leo">Low Earth Orbit (LEO)</span>
+                <span class="layer-sub-desc">ISS (418km), Hubble (525km), Tiangong (390km)</span>
+              </div>
+            </div>
+            <label class="ui-switch">
+              <input type="checkbox" id="layer-toggle-spacecraft-leo" checked data-layer="spacecraft_leo">
+              <span class="ui-slider"></span>
+            </label>
+          </div>
+
+          <!-- Sub-row: Deep Space & Interstellar -->
+          <div class="layer-switch-row sub-row">
+            <div class="layer-info">
+              <span class="layer-icon">✨</span>
+              <div class="layer-text-group">
+                <span class="layer-title-text" data-i18n="layer_spacecraft_deep">Lagrange L2 & Interstellar Probes</span>
+                <span class="layer-sub-desc">JWST (1.5M km), Voyager 1 (24.5B km), Voyager 2 (20.4B km)</span>
+              </div>
+            </div>
+            <label class="ui-switch">
+              <input type="checkbox" id="layer-toggle-spacecraft-deep" checked data-layer="spacecraft_deep">
+              <span class="ui-slider"></span>
+            </label>
+          </div>
+
+          <!-- Milky Way Ribbon -->
+          <div class="layer-switch-row">
+            <div class="layer-info">
+              <span class="layer-icon">🌌</span>
+              <div class="layer-text-group">
+                <span class="layer-title-text" data-i18n="layer_milkyway">Milky Way Stream</span>
+                <span class="layer-sub-desc" data-i18n="layer_milkyway_desc">Smooth continuous galactic starlight ribbon</span>
+              </div>
+            </div>
+            <label class="ui-switch">
+              <input type="checkbox" id="layer-toggle-milkyway" checked data-layer="milky_way">
+              <span class="ui-slider"></span>
+            </label>
+          </div>
+
+          <!-- Sky Grid & Horizon Compass -->
+          <div class="layer-switch-row">
+            <div class="layer-info">
+              <span class="layer-icon">🌐</span>
+              <div class="layer-text-group">
+                <span class="layer-title-text" data-i18n="layer_grid">Horizon & Azimuth/Alt Grid</span>
+                <span class="layer-sub-desc" data-i18n="layer_grid_desc">Cardinal compass (N, E, S, W) and altitude circles</span>
+              </div>
+            </div>
+            <label class="ui-switch">
+              <input type="checkbox" id="layer-toggle-grid" checked data-layer="horizon_grid">
+              <span class="ui-slider"></span>
+            </label>
+          </div>
+
+          <!-- Star Name Labels -->
+          <div class="layer-switch-row">
+            <div class="layer-info">
+              <span class="layer-icon">🏷️</span>
+              <div class="layer-text-group">
+                <span class="layer-title-text" data-i18n="layer_labels">Star Names & Distance Badges</span>
+                <span class="layer-sub-desc" data-i18n="layer_labels_desc">Text labels and orbit distances beside objects</span>
+              </div>
+            </div>
+            <label class="ui-switch">
+              <input type="checkbox" id="layer-toggle-labels" checked data-layer="star_labels">
+              <span class="ui-slider"></span>
+            </label>
+          </div>
+
+          <!-- Ignore Ambient Light (Pristine Dark Sky) -->
+          <div class="layer-switch-row" style="background: rgba(56, 189, 248, 0.08); border-radius: 8px; border: 1px solid rgba(56, 189, 248, 0.25);">
+            <div class="layer-info">
+              <span class="layer-icon">✨</span>
+              <div class="layer-text-group">
+                <span class="layer-title-text" data-i18n="layer_ignore_ambient">Ignore Ambient Light</span>
+                <span class="layer-sub-desc" data-i18n="layer_ignore_ambient_desc">Pristine dark sky bypassing room, city and camera light estimation</span>
+              </div>
+            </div>
+            <label class="ui-switch">
+              <input type="checkbox" id="layer-toggle-ignore-ambient">
+              <span class="ui-slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upcoming Celestial Events Panel Modal -->
+    <div id="events-modal" class="modal-overlay">
+      <div class="modal-card events-modal-card">
+        <div class="modal-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 20px;">☄️</span>
+            <div>
+              <span class="modal-title" data-i18n="events_modal_title">Upcoming Celestial Events</span>
+              <div style="font-size: 11px; color: var(--text-muted);" data-i18n="events_modal_sub">Curated astronomical wonders & meteor showers. Tap to jump & aim!</div>
+            </div>
+          </div>
+          <button id="close-events-btn" class="sheet-close-btn">✕</button>
+        </div>
+
+        <!-- Category Filter Tabs -->
+        <div class="events-category-bar">
+          <button class="event-category-pill active" data-cat="all" data-i18n="evt_cat_all">All Events</button>
+          <button class="event-category-pill" data-cat="soon" data-i18n="evt_cat_soon">⚡ Happening Soon</button>
+          <button class="event-category-pill" data-cat="rare" data-i18n="evt_cat_rare">⭐ Rare Wonders</button>
+          <button class="event-category-pill" data-cat="meteor_shower" data-i18n="evt_cat_meteors">🌠 Meteor Showers</button>
+          <button class="event-category-pill" data-cat="eclipse" data-i18n="evt_cat_eclipses">🌑 Eclipses</button>
+          <button class="event-category-pill" data-cat="opposition" data-i18n="evt_cat_oppositions">🪐 Planet Oppositions</button>
+        </div>
+
+        <!-- Scrollable Events List -->
+        <div id="events-list-container" class="events-list-scroll">
+          <!-- Dynamically populated from StarsData.CELESTIAL_EVENTS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- iOS Safari "Add to Home Screen" Guide Modal -->
+    <div id="ios-install-modal" class="modal-overlay install-guide-modal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <span class="modal-title" data-i18n="ios_guide_title">Install Star Finder App</span>
+          <button id="close-ios-modal-btn" class="sheet-close-btn">✕</button>
+        </div>
+        <div class="ios-step">
+          <span class="step-num">1</span>
+          <span data-i18n="ios_step1">Tap the Share button in Safari toolbar</span>
+        </div>
+        <div class="ios-step">
+          <span class="step-num">2</span>
+          <span data-i18n="ios_step2">Scroll down and tap "Add to Home Screen"</span>
+        </div>
+        <div class="ios-step">
+          <span class="step-num">3</span>
+          <span data-i18n="ios_step3">Tap "Add" in top-right corner to finish install</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Scripts with cache busting query string -->
+  <script src="./js/astronomy.js?v=3.0"></script>
+  <script src="./js/stars-data.js?v=3.0"></script>
+  <script src="./js/sensors.js?v=3.0"></script>
+  <script src="./js/renderer.js?v=3.0"></script>
+  <script src="./js/app.js?v=3.0"></script>
+
+</body>
+</html>
